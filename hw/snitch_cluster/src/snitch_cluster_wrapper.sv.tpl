@@ -94,7 +94,7 @@ module ${cfg['cluster']['name']}_wrapper (
     .ICacheLineCount (${cfg['cluster']['name']}_pkg::ICacheLineCount),
     .ICacheWays (${cfg['cluster']['name']}_pkg::ICacheWays),
     .VMSupport (${int(cfg['cluster']['vm_support'])}),
-    .EnableDMAMulticast (${int(cfg['cluster']['enable_multicast'])}),
+    .EnableDMAMulticast (${int(cfg['cluster']['enable_DMA_multicast'])}),
     .RVE (${core_isa('e')}),
     .RVF (${core_isa('f')}),
     .RVD (${core_isa('d')}),

@@ -38,3 +38,8 @@ extern void snrt_wait_writeback(uint32_t val);
 extern void snrt_enable_multicast(uint32_t mask);
 
 extern void snrt_disable_multicast();
+
+extern void snrt_enable_reduction(uint32_t mask, uint32_t reduction);
+
+extern void snrt_disable_reduction();
+

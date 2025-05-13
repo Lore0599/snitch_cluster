@@ -34,3 +34,7 @@ inline void snrt_wait_writeback(uint32_t val);
 inline void snrt_enable_multicast(uint32_t mask);
 
 inline void snrt_disable_multicast();
+
+inline void snrt_enable_reduction(uint32_t mask, uint32_t reduction);
+
+inline void snrt_disable_reduction();

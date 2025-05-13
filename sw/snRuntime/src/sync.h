@@ -77,28 +77,28 @@ inline void snrt_mutex_release(volatile uint32_t *pmtx) {
 // Barrier functions
 //================================================================================
 
+/**
+ * @brief Wakes up all core by writing in their respective clint var.
+ *        Can only be called by a single core inside the hole system!
+ * @note When the Multicast is enbled then the core mask is sent to itself too
+ *        therefor setting the wake up flag althrough the core is awake.
+ *        As consequence the function "snrt_int_clr_mcip()" needs to be called
+ *        even if the core was awake. For a simplified flow we copy this behaviour
+ *        in the non-multicast case even if it was not 100% necessary!
+ */
 inline void snrt_wake_all(uint32_t core_mask) {
 #ifdef SNRT_SUPPORTS_MULTICAST
     // Multicast cluster interrupt to every other cluster's core
-    // Note: we need to address another cluster's address space
-    //       because the cluster XBAR has not been extended to support
-    //       multicast yet. We address the second cluster, if we are the
-    //       first cluster, and the first cluster otherwise.
-    uintptr_t addr = (uintptr_t)snrt_cluster_clint_set_ptr() -
-                     SNRT_CLUSTER_OFFSET * snrt_cluster_idx();
-    if (snrt_cluster_idx() == 0) addr += SNRT_CLUSTER_OFFSET;
+    uintptr_t addr = (uintptr_t) snrt_cluster_clint_set_ptr();
     snrt_enable_multicast(SNRT_BROADCAST_MASK);
     *((uint32_t *)addr) = core_mask;
     snrt_disable_multicast();
 #else
+    // loop to send cluster interrupt to every other cluster's core
     for (int i = 0; i < snrt_cluster_num(); i++) {
-        if (snrt_cluster_idx() != i) {
-            void *ptr = snrt_remote_l1_ptr(snrt_cluster_clint_set_ptr(),
-                                           snrt_cluster_idx(), i);
-            *((uint32_t *)ptr) = core_mask;
-        }
+        void *ptr = snrt_remote_l1_ptr((void*) snrt_cluster_clint_set_ptr(), snrt_cluster_idx(), i);
+        *((uint32_t *)ptr) = core_mask;
     }
-
 #endif
 }
 
@@ -114,57 +114,72 @@ inline void snrt_cluster_hw_barrier() {
 /**
  * @brief Synchronize one core from every cluster with the others.
  * @details Implemented as a software barrier.
- * @note One core per cluster must invoke this function, or the calling cores
+ * @note All cores per cluster must invoke this function, or the calling cores
  *       will stall indefinitely.
  */
+
 inline void snrt_inter_cluster_barrier() {
-#ifdef SUPPORTS_MULTICAST
-    // Everyone increments a shared counter
-    uint32_t cnt =
-        __atomic_add_fetch(&(_snrt_barrier.cnt), 1, __ATOMIC_RELAXED);
+// First we need to reduce from all clusters together.
+// TODO raroth: Potentially if we could track the B-Response from the reduction we could remove the multicast completly.
+//              The downside is that we could not send the core into sleep and would have the cores spin on a memory fence!
+#ifdef SNRT_SUPPORTS_REDUCTION
+    // Only continue with dma core's - send the rest into sleep mode
+    if(snrt_is_dm_core()){
+        // fetch the address for the reduction
+        cls_t * ctrl_red = cls();
+        void * addr = (void *) snrt_remote_l1_ptr(&(ctrl_red->reduction), snrt_cluster_idx(), 0);
+        
+        // clear the memory location of any previouse reduction
+        if(snrt_cluster_idx() == 0){
+            *((uint32_t *) addr) = 0;
+        }
 
-    // All but the last cluster enter WFI, while the last cluster resets the
-    // counter for the next barrier and multicasts an interrupt to wake up the
-    // other clusters.
-    if (cnt == snrt_cluster_num()) {
-        _snrt_barrier.cnt = 0;
+        // init the reduction
+        // TODO raroth: make the number 12 as a define
+        snrt_enable_reduction(SNRT_BROADCAST_MASK, 12);
+        *((uint32_t *) addr) = 1;
+        snrt_disable_reduction();
 
-        // Multicast cluster interrupt to every other cluster's core
-        // Note: we need to address another cluster's address space
-        //       because the cluster XBAR has not been extended to support
-        //       multicast yet. We address the second cluster, if we are the
-        //       first cluster, and the second otherwise.
-        uintptr_t addr = (uintptr_t)snrt_cluster_clint_set_ptr() - SNRT_CLUSTER_OFFSET * snrt_cluster_idx();
-        if (snrt_cluster_idx() == 0) addr += SNRT_CLUSTER_OFFSET;
-        snrt_enable_multicast(BCAST_MASK_ALL);
-        *((uint32_t *)addr) = 1 << snrt_cluster_core_idx();
-        snrt_disable_multicast();
-        // Clear interrupt for next barrier
-        snrt_int_clr_mcip();
+        // The dma core of cluster 0 should pull the reduction destination to find if we have finished th reduction
+        if(snrt_cluster_idx() == 0){
+            while(*((uint32_t *) addr) != 1);
+            // Wake all clusters
+            snrt_wake_all((1 << snrt_cluster_core_num()) - 1);
+        } else {
+            snrt_wfi();
+        }
     } else {
         snrt_wfi();
-        // Clear interrupt for next barrier
-        snrt_int_clr_mcip();
     }
 #else
-    // Remember previous iteration
-    uint32_t prev_barrier_iteration = _snrt_barrier.iteration;
-    uint32_t cnt =
-        __atomic_add_fetch(&(_snrt_barrier.cnt), 1, __ATOMIC_RELAXED);
+    // Only continue with dma core's - send the rest into sleep mode
+    if(snrt_is_dm_core()){
+        uint32_t cnt = __atomic_add_fetch(&(_snrt_barrier.cnt), 1, __ATOMIC_RELAXED);
 
-    // All but the last cluster enter WFI, while the last cluster resets the
-    // counter for the next barrier and multicasts an interrupt to wake up the
-    // other clusters.
-    if (cnt == snrt_cluster_num()) {
-        _snrt_barrier.cnt = 0;
-        // Wake all clusters
-        snrt_wake_all(1 << snrt_cluster_core_idx());
+        // All but the last cluster enter WFI, while the last cluster resets the
+        // counter for the next barrier and multicasts an interrupt to wake up the
+        // other clusters.
+        if (cnt == snrt_cluster_num()) {
+            _snrt_barrier.cnt = 0;
+            // Wake all clusters
+            snrt_wake_all((1 << snrt_cluster_core_num()) - 1);
+        } else {
+            snrt_wfi();
+        }
     } else {
         snrt_wfi();
-        // Clear interrupt for next barrier
-        snrt_int_clr_mcip();
     }
 #endif
+
+    // TODO (raroth): Hotfix!!! Race condition applies here!
+    // The problem is the snrt_wake_all call is multicast which targets all cores / clusters.
+    // If this delay is not inserted then the multicast will hit core 0 cluster 0 at the exact time
+    // where the clear flag is reset but not read in the function "snrt_int_clr_mcip".
+    // The real solution would be a fence here!!!
+    snrt_cluster_hw_barrier();
+
+    // Clear the reset flag
+    snrt_int_clr_mcip();
 }
 
 /**
@@ -177,13 +192,12 @@ inline void snrt_inter_cluster_barrier() {
  *       will stall indefinitely.
  */
 inline void snrt_global_barrier() {
+    // Synchronize cores in a cluster with the HW barrier
     snrt_cluster_hw_barrier();
 
-    // Synchronize all DM cores in software
-    if (snrt_is_dm_core()) {
-        snrt_inter_cluster_barrier();
+    // Synchronize all clusters
+    snrt_inter_cluster_barrier();
 
-    }
     // Synchronize cores in a cluster with the HW barrier
     snrt_cluster_hw_barrier();
 }
@@ -340,9 +354,39 @@ inline void snrt_wait_writeback(uint32_t val) {
  *
  * @param mask Multicast mask value
  */
-inline void snrt_enable_multicast(uint32_t mask) { write_csr(0x7c4, mask); }
+inline void snrt_enable_multicast(uint32_t mask) { 
+    write_csr(0x7c4, mask);
+    write_csr(0x7c5, 1);    // set the collective op type to 1 (Multicast)
+}
 
 /**
  * @brief Disable LSU multicast
  */
-inline void snrt_disable_multicast() { write_csr(0x7c4, 0); }
+inline void snrt_disable_multicast() { 
+    write_csr(0x7c4, 0);
+    write_csr(0x7c5, 0);
+}
+
+//================================================================================
+// Reduction functions
+//================================================================================
+
+/**
+ * @brief Enable LSU reduction
+ * @details All stores performed after this call will be reductions
+ *
+ * @param mask Mask defines all involved members
+ * @param reduction Type of reduction operation
+ */
+inline void snrt_enable_reduction(uint32_t mask, uint32_t reduction) { 
+    write_csr(0x7c4, mask);
+    write_csr(0x7c5, reduction);    // get the type of collectiv operation from the driver
+}
+
+/**
+ * @brief Disable LSU reduction
+ */
+inline void snrt_disable_reduction() {
+    write_csr(0x7c4, 0);
+    write_csr(0x7c5, 0);
+}
