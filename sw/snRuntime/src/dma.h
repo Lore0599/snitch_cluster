@@ -18,7 +18,8 @@
 #define DMSTAT_FUNCT7 0b0000101
 #define DMSTR_FUNCT7 0b0000110
 #define DMREP_FUNCT7 0b0000111
-#define DMMCAST_FUNCT7 0b0001000
+#define DMUSER_FUNCT7 0b0001000
+
 
 /// A DMA transfer identifier.
 typedef uint32_t snrt_dma_txid_t;
@@ -60,26 +61,30 @@ inline uint32_t snrt_dma_start_1d_wideptr(uint64_t dst, uint64_t src,
 }
 
 /**
- * @brief Start an asynchronous multicast 1D DMA transfer with 64-bit wide
- * pointers.
+ * @brief Start an asynchronous collective operation 1D DMA transfer with 64-bit wide pointers.
+ *        Hardcoded position from the coll_mask & coll_op! It supports only 6 bit wide coll_op!  
  * @param dst The destination address.
  * @param src The source address.
  * @param size The size of the transfer in bytes.
+ * @param coll_mask The mask for the collective operation
+ * @param coll_op operation type
  * @return The DMA transfer ID.
  */
-inline uint32_t snrt_dma_start_1d_mcast_wideptr(uint64_t dst, uint64_t src,
-                                                size_t size, uint32_t mcast) {
+inline uint32_t snrt_dma_start_1d_collectiv_wideptr(uint64_t dst, uint64_t src,
+                                                size_t size, uint64_t coll_mask,
+                                                uint32_t coll_op) {
     register uint32_t reg_dst_low asm("a0") = dst >> 0;    // 10
     register uint32_t reg_dst_high asm("a1") = dst >> 32;  // 11
     register uint32_t reg_src_low asm("a2") = src >> 0;    // 12
     register uint32_t reg_src_high asm("a3") = src >> 32;  // 13
     register uint32_t reg_size asm("a4") = size;           // 14
-    register uint32_t reg_mcast asm("a5") = mcast;         // 15
+    register uint32_t reg_user_low asm("a5") = (((uint32_t) (coll_mask << 6)) | (coll_op & 0x0000003F));  // 15
+    register uint32_t reg_user_high asm("a6") = (((uint32_t) (coll_mask >> 26)) & 0x0000003F);   // 16
 
-    // dmmcast a5
-    asm volatile(".word %0\n" ::"i"(R_TYPE_ENCODE(DMMCAST_FUNCT7, 0b00000, 15,
+    // dmuser a5, a6
+    asm volatile(".word %0\n" ::"i"(R_TYPE_ENCODE(DMUSER_FUNCT7, 16, 15,
                                                   XDMA_FUNCT3, 0, OP_CUSTOM1)),
-                 "r"(reg_mcast));
+                 "r"(reg_user_high), "r"(reg_user_low));
 
     // dmsrc a2, a3
     asm volatile(".word %0\n" ::"i"(R_TYPE_ENCODE(DMSRC_FUNCT7, 13, 12,
@@ -120,12 +125,14 @@ inline snrt_dma_txid_t snrt_dma_start_1d(void *dst, const void *src,
  * @param dst The destination pointer.
  * @param src The source pointer.
  * @param size The size of the transfer in bytes.
+ * @param coll_mask The mask for the collective operation
+ * @param coll_op operation type
  * @return The DMA transfer ID.
  */
-inline snrt_dma_txid_t snrt_dma_start_1d_mcast(void *dst, const void *src,
-                                               size_t size, uint32_t mcast) {
-    return snrt_dma_start_1d_mcast_wideptr((size_t)dst, (size_t)src, size,
-                                           mcast);
+inline snrt_dma_txid_t snrt_dma_start_1d_collectiv(void *dst, const void *src,
+                                               size_t size, void *coll_mask,
+                                                uint32_t coll_op) {
+    return snrt_dma_start_1d_collectiv_wideptr((size_t)dst, (size_t)src, size, (size_t)coll_mask, coll_op);
 }
 
 /**
@@ -483,16 +490,18 @@ inline snrt_dma_txid_t snrt_dma_load_1d_tile(void *dst, void *src,
  * @param tile_idx Index of the tile in the 1D array.
  * @param tile_size Number of elements within a tile of the 1D array.
  * @param prec Number of bytes of each element in the 1D array.
- * @param mcast Multicast mask applied on the destination address.
+ * @param coll_mask Multicast mask for collective operation applied on the destination address.
+ * @param coll_op Type of operation (Should only work for multicast)
  */
-inline snrt_dma_txid_t snrt_dma_mcast_load_1d_tile(void *dst, void *src,
+inline snrt_dma_txid_t snrt_dma_collectiv_load_1d_tile(void *dst, void *src,
                                                    size_t tile_idx,
                                                    size_t tile_size,
                                                    uint32_t prec,
-                                                   uint32_t mcast) {
+                                                   void *coll_mask,
+                                                   uint32_t coll_op) {
     size_t tile_nbytes = tile_size * prec;
-    return snrt_dma_start_1d_mcast(dst, src + tile_idx * tile_nbytes,
-                                   tile_nbytes, mcast);
+    return snrt_dma_start_1d_collectiv(dst, src + tile_idx * tile_nbytes,
+                                   tile_nbytes, coll_mask, coll_op);
 }
 
 /**

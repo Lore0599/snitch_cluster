@@ -5,8 +5,16 @@
 extern snrt_dma_txid_t snrt_dma_start_1d_wideptr(uint64_t dst, uint64_t src,
                                                  size_t size);
 
+inline uint32_t snrt_dma_start_1d_collectiv_wideptr(uint64_t dst, uint64_t src,
+                                                    size_t size, uint64_t coll_mask,
+                                                    uint32_t coll_op);
+
 extern snrt_dma_txid_t snrt_dma_start_1d(void *dst, const void *src,
                                          size_t size);
+
+extern snrt_dma_txid_t snrt_dma_start_1d_collectiv(void *dst, const void *src,
+                                                   size_t size, void *coll_mask,
+                                                   uint32_t coll_op);
 
 extern snrt_dma_txid_t snrt_dma_start_2d_wideptr(uint64_t dst, uint64_t src,
                                                  size_t size, size_t dst_stride,
