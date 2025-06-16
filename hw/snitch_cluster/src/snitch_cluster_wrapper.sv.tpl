@@ -46,7 +46,13 @@ module ${cfg['cluster']['name']}_wrapper (
   output ${cfg['cluster']['name']}_pkg::wide_out_req_t      wide_out_req_o,
   input  ${cfg['cluster']['name']}_pkg::wide_out_resp_t     wide_out_resp_i,
   input  ${cfg['cluster']['name']}_pkg::wide_in_req_t       wide_in_req_i,
-  output ${cfg['cluster']['name']}_pkg::wide_in_resp_t      wide_in_resp_o
+  output ${cfg['cluster']['name']}_pkg::wide_in_resp_t      wide_in_resp_o,
+  input  ${cfg['cluster']['name']}_pkg::dca_router_req_t    dca_8x_req_i,
+  input  logic                                              dca_8x_req_valid_i,
+  output logic                                              dca_8x_req_ready_o,
+  output ${cfg['cluster']['name']}_pkg::dca_router_resp_t   dca_8x_resp_o,
+  output logic                                              dca_8x_resp_valid_o,
+  input  logic                                              dca_8x_resp_ready_i
 );
 
   localparam int unsigned NumIntOutstandingLoads [${cfg['cluster']['nr_cores']}] = '{${core_cfg('num_int_outstanding_loads')}};
@@ -108,6 +114,7 @@ module ${cfg['cluster']['name']}_wrapper (
     .Xdma (${core_cfg_flat('xdma')}),
     .Xssr (${core_cfg_flat('xssr')}),
     .Xfrep (${core_cfg_flat('xfrep')}),
+    .Xdca (${int(cfg['cluster']['enable_dca'])}),
     .ReRouteCollectivOp (${int(cfg['cluster']['enable_reroute_collectiv'])}),
     .Xcopift (${core_cfg_flat('xcopift')}),
     .FPUImplementation (${cfg['cluster']['name']}_pkg::FPUImplementation),
@@ -139,6 +146,8 @@ module ${cfg['cluster']['name']}_wrapper (
     .RegisterFPUReq (${int(cfg['cluster']['timing']['register_fpu_req'])}),
     .RegisterFPUIn (${int(cfg['cluster']['timing']['register_fpu_in'])}),
     .RegisterFPUOut (${int(cfg['cluster']['timing']['register_fpu_out'])}),
+    .RegisterDCAIn (${int(cfg['cluster']['timing']['register_dca_in'])}),
+    .RegisterDCAOut (${int(cfg['cluster']['timing']['register_dca_out'])}),
     .RegisterSequencer (${int(cfg['cluster']['timing']['register_sequencer'])}),
     .IsoCrossing (${int(cfg['cluster']['timing']['iso_crossings'])}),
     .NarrowXbarLatency (axi_pkg::${cfg['cluster']['timing']['narrow_xbar_latency']}),
@@ -153,7 +162,9 @@ module ${cfg['cluster']['name']}_wrapper (
     .CaqTagWidth (${int(cfg['cluster']['caq_tag_width'])}),
     .DebugSupport (${int(cfg['cluster']['enable_debug'])}),
     .AliasRegionEnable (${int(cfg['cluster']['alias_region_enable'])}),
-    .AliasRegionBase (${int(cfg['cluster']['alias_region_base'])})
+    .AliasRegionBase (${int(cfg['cluster']['alias_region_base'])}),
+    .dca_router_req_t (snitch_cluster_pkg::dca_router_req_t),
+    .dca_router_resp_t (snitch_cluster_pkg::dca_router_resp_t)
   ) i_cluster (
     .clk_i,
     .rst_ni,
@@ -189,6 +200,21 @@ module ${cfg['cluster']['name']}_wrapper (
     .wide_out_req_o,
     .wide_out_resp_i,
     .wide_in_req_i,
-    .wide_in_resp_o
+    .wide_in_resp_o,
+% if cfg['cluster']['enable_dca']:
+    .dca_8x_req_i,
+    .dca_8x_req_valid_i,
+    .dca_8x_req_ready_o,
+    .dca_8x_resp_o,
+    .dca_8x_resp_valid_o,
+    .dca_8x_resp_ready_i
+% else:
+    .dca_8x_req_i ('0),
+    .dca_8x_req_valid_i (1'b0),
+    .dca_8x_req_ready_o,
+    .dca_8x_resp_o,
+    .dca_8x_resp_valid_o,
+    .dca_8x_resp_ready_i (1'b0)
+%endif
   );
 endmodule

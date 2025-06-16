@@ -44,7 +44,13 @@ module testharness;
     .wide_out_req_o (wide_out_req),
     .wide_out_resp_i (wide_out_resp),
     .wide_in_req_i (wide_in_req),
-    .wide_in_resp_o (wide_in_resp)
+    .wide_in_resp_o (wide_in_resp),
+    .dca_8x_req_i ('0),
+    .dca_8x_req_valid_i ('0),
+    .dca_8x_req_ready_o (),
+    .dca_8x_resp_o (),
+    .dca_8x_resp_valid_o (),
+    .dca_8x_resp_ready_i ('0)
   );
 
   ///////////
