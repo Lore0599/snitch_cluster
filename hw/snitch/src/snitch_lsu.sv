@@ -53,6 +53,7 @@ module snitch_lsu #(
   input  reqrsp_pkg::amo_op_e  lsu_qamo_i,
   input  logic                 lsu_qrepd_i,  // Whether this is a sequencer repetition
   input  addr_t                lsu_qmcast_i,  // Multicast mask
+  input  logic [31:0]          lsu_qcollective_i, // Collective Operation
   input  logic                 lsu_qvalid_i,
   output logic                 lsu_qready_o,
   // response channel
@@ -252,6 +253,7 @@ module snitch_lsu #(
   assign data_req_o.q.write = lsu_qwrite_i;
   assign data_req_o.q.addr = lsu_qaddr_i;
   assign data_req_o.q.mask = lsu_qmcast_i;
+  assign data_req_o.q.collect = lsu_qcollective_i; 
   assign data_req_o.q.amo  = lsu_qamo_i;
   assign data_req_o.q.size = lsu_qsize_i;
 

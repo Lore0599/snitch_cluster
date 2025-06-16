@@ -283,7 +283,11 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
   dm::dcsr_t dcsr_d, dcsr_q;
   logic [31:0] dpc_d, dpc_q;
   logic [31:0] dscratch_d, dscratch_q;
+  
   logic debug_d, debug_q;
+
+  // Collective Operation Type
+  logic [31:0] csr_collective_d, csr_collective_q;
 
   `FFAR(scratch_q, scratch_d, '0, clk_i, rst_i)
   `FFAR(tvec_q, tvec_d, '0, clk_i, rst_i)
@@ -320,6 +324,7 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
 
   `FFAR(csr_stall_q, csr_stall_d, '0, clk_i, rst_i)
   `FFAR(csr_mcast_q, csr_mcast_d, '0, clk_i, rst_i)
+  `FFAR(csr_collective_q, csr_collective_d, '0, clk_i, rst_i)
 
   typedef struct packed {
     fpnew_pkg::fmt_mode_t  fmode;
@@ -2356,6 +2361,7 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
     dcsr_d = dcsr_q;
     dpc_d = dpc_q;
     dscratch_d = dscratch_q;
+    csr_collective_d = csr_collective_q;
 
     csr_stall_d = csr_stall_q;
     csr_mcast_d = csr_mcast_q;
@@ -2583,9 +2589,14 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
             csr_stall_d = 1'b1;
           end
           // Multicast mask
-          CSR_MCAST: begin
+          CSR_COLLECTIVE_MASK: begin
             csr_rvalue = csr_mcast_q;
             csr_mcast_d = alu_result[31:0];
+          end
+          // Collective Operation
+          CSR_COLLECTIVE_OP : begin
+            csr_rvalue = csr_collective_q;
+            csr_collective_d = alu_result[31:0];
           end
           default: begin
             csr_rvalue = '0;
@@ -2908,6 +2919,7 @@ module snitch import snitch_pkg::*; import riscv_instr::*; #(
     .lsu_qamo_i (ls_amo),
     .lsu_qrepd_i (1'b0),
     .lsu_qmcast_i (addr_t'(csr_mcast_q)),
+    .lsu_qcollective_i (csr_collective_q),
     .lsu_qvalid_i (lsu_qvalid),
     .lsu_qready_o (lsu_qready),
     .lsu_pdata_o (ld_result),

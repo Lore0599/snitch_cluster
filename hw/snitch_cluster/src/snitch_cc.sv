@@ -66,6 +66,8 @@ module snitch_cc #(
   parameter bit          Xfrep              = 1,
   /// Has `SSR` support.
   parameter bit          Xssr               = 1,
+  /// Reroute Collectiv Operation (Multicast + Reduction) to the AXI Crossbar anyway!
+  parameter bit          ReRouteCollectivOp = 0,
   /// Has `COPIFT` support.
   parameter bit          Xcopift            = 1,
   /// Has `IPU` support.
@@ -606,6 +608,7 @@ module snitch_cc #(
   localparam int unsigned SelectWidth = cf_math_pkg::idx_width(2);
   typedef logic [SelectWidth-1:0] select_t;
   select_t slave_select;
+  select_t slave_select_coll_op;
   reqrsp_demux #(
     .NrPorts (2),
     .req_t (dreq_t),
@@ -615,12 +618,23 @@ module snitch_cc #(
   ) i_reqrsp_demux (
     .clk_i,
     .rst_ni,
-    .slv_select_i (slave_select),
+    .slv_select_i (slave_select_coll_op),
     .slv_req_i (merged_dreq),
     .slv_rsp_o (merged_drsp),
     .mst_req_o ({data_tcdm_req, data_req_o}),
     .mst_rsp_i ({data_tcdm_rsp, data_rsp_i})
   );
+
+  // If we want to support collectiv operation (MCasst + Reduction) then all coll op request needs to be
+  // passed to the SoC independent of the address map. The problem is that a multicast which targets its
+  // own address space needs to be forwarded to the AXI crossbar so that the rest of the SoC
+  // can be notified about the multicast too (Same goes for Reduction)!
+  // If the .collect subfield is set to 0 we have a unicast - everything else is a collective operation!
+  if(ReRouteCollectivOp) begin
+    assign slave_select_coll_op = (merged_dreq.q.collect != 0) ? '0 : slave_select;
+  end else begin
+    assign slave_select_coll_op = slave_select;
+  end
 
   typedef struct packed {
     int unsigned idx;

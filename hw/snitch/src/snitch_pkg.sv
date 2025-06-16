@@ -122,11 +122,11 @@ package snitch_pkg;
   localparam logic [3:0] SEI = 9;
   localparam logic [4:0] SCI = 17;
 
-  // Slaves on Cluster AXI Bus
+  // Slaves on Cluster AXI Bus  
   typedef enum integer {
     TCDM               = 0,
-    ClusterPeripherals = 1,
-    SoC                = 2
+    SoC                = 1,
+    ClusterPeripherals = 2
   } cluster_slave_e;
 
   typedef enum integer {

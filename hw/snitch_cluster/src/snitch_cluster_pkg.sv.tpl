@@ -59,6 +59,7 @@ package ${cfg['cluster']['name']}_pkg;
   localparam int unsigned NarrowUserWidth = ${cfg['cluster']['user_width']};
   localparam int unsigned WideUserWidth = ${cfg['cluster']['dma_user_width']};
   localparam int unsigned AtomicIdWidth = ${cfg['cluster']['atomic_id_width']};
+  localparam int unsigned CollectiveWidth = ${cfg['cluster']['collectiv_width']};
 
   localparam int unsigned ICacheLineWidth [NrHives] = '{${icache_cfg('cacheline')}};
   localparam int unsigned ICacheLineCount [NrHives] = '{${icache_cfg('depth')}};
@@ -78,17 +79,17 @@ package ${cfg['cluster']['name']}_pkg;
     sram_cfg_t tcdm;
   } sram_cfgs_t;
 
-  typedef logic [AddrWidth-1:0]         addr_t;
-  typedef logic [NarrowDataWidth-1:0]   data_t;
-  typedef logic [NarrowDataWidth/8-1:0] strb_t;
-  typedef logic [WideDataWidth-1:0]     data_dma_t;
-  typedef logic [WideDataWidth/8-1:0]   strb_dma_t;
-  typedef logic [NarrowIdWidthIn-1:0]   narrow_in_id_t;
-  typedef logic [NarrowIdWidthOut-1:0]  narrow_out_id_t;
-  typedef logic [WideIdWidthIn-1:0]     wide_in_id_t;
-  typedef logic [WideIdWidthOut-1:0]    wide_out_id_t;
-  typedef logic [NarrowUserWidth-1:0]   user_t;
-  typedef logic [WideUserWidth-1:0]     user_dma_t;
+  typedef logic [AddrWidth-1:0]                         addr_t;
+  typedef logic [NarrowDataWidth-1:0]                   data_t;
+  typedef logic [NarrowDataWidth/8-1:0]                 strb_t;
+  typedef logic [WideDataWidth-1:0]                     data_dma_t;
+  typedef logic [WideDataWidth/8-1:0]                   strb_dma_t;
+  typedef logic [NarrowIdWidthIn-1:0]                   narrow_in_id_t;
+  typedef logic [NarrowIdWidthOut-1:0]                  narrow_out_id_t;
+  typedef logic [WideIdWidthIn-1:0]                     wide_in_id_t;
+  typedef logic [WideIdWidthOut-1:0]                    wide_out_id_t;
+  typedef logic [NarrowUserWidth-1:0]                   user_t;
+  typedef logic [WideUserWidth-1:0]                     user_dma_t;
 
   `AXI_TYPEDEF_ALL(narrow_in, addr_t, narrow_in_id_t, data_t, strb_t, user_t)
   `AXI_TYPEDEF_ALL(narrow_out, addr_t, narrow_out_id_t, data_t, strb_t, user_t)
