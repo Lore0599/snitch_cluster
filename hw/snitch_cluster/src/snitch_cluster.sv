@@ -423,9 +423,7 @@ module snitch_cluster
   typedef logic [WideIdWidthIn-1:0]     id_dma_mst_t;
   typedef logic [WideIdWidthOut-1:0]    id_dma_slv_t;
 
-  typedef logic [NarrowUserWidth-1:0]   user_t;
-
-  // TODO (raroth) Solve this clusterfuck of different AXI definition!!! We define the user mask in picobello at least 3 time - WTF?
+  // AXI User definition for the narrow and wide link
   typedef struct packed {
     addr_t                                        mcast;
     logic [CollectiveWidth-1:0]                   collectiv;
@@ -433,8 +431,9 @@ module snitch_cluster
   } user_narrow_reduction_t;
 
   typedef struct packed {
-    logic [WideUserWidth-1:0] mcast;
-  } user_dma_t;
+    addr_t                                        mcast;
+    logic [CollectiveWidth-1:0]                   collectiv;
+  } user_dma_reduction_t;
 
   typedef logic [TCDMMemAddrWidth-1:0]  tcdm_mem_addr_t;
   typedef logic [TCDMAddrWidth-1:0]     tcdm_addr_t;
@@ -447,8 +446,8 @@ module snitch_cluster
   // Regbus peripherals.
   `AXI_TYPEDEF_ALL(axi_mst, addr_t, id_mst_t, data_t, strb_t, user_narrow_reduction_t)
   `AXI_TYPEDEF_ALL(axi_slv, addr_t, id_slv_t, data_t, strb_t, user_narrow_reduction_t)
-  `AXI_TYPEDEF_ALL(axi_mst_dma, addr_t, id_dma_mst_t, data_dma_t, strb_dma_t, user_dma_t)
-  `AXI_TYPEDEF_ALL(axi_slv_dma, addr_t, id_dma_slv_t, data_dma_t, strb_dma_t, user_dma_t)
+  `AXI_TYPEDEF_ALL(axi_mst_dma, addr_t, id_dma_mst_t, data_dma_t, strb_dma_t, user_dma_reduction_t)
+  `AXI_TYPEDEF_ALL(axi_slv_dma, addr_t, id_dma_slv_t, data_dma_t, strb_dma_t, user_dma_reduction_t)
 
   `REQRSP_TYPEDEF_ALL(reqrsp, addr_t, data_t, strb_t)
 
@@ -686,7 +685,6 @@ module snitch_cluster
     .mst_resp_i (wide_axi_mst_rsp[SoCDMAIn])
   );
 
-
   int unsigned dma_xbar_default_port = SoCDMAOut;
   xbar_rule_t dma_xbar_default_port_rule;
   assign dma_xbar_default_port_rule = '{
@@ -719,10 +717,17 @@ module snitch_cluster
     end
   end
 
-  localparam bit [DmaXbarCfg.NoSlvPorts-1:0] DMAEnableDefaultMstPort = '1;
-  if (EnableDMAMulticast) begin : gen_mcast_dma_xbar
+  if (EnableDMAMulticast && ReRouteCollectivOp) begin : gen_mcast_dma_xbar
+
+    // Define the collective connectivity matrix that all collective operation packet are forwarded to the default port
+    localparam bit [DmaMcastXbarCfg.NoSlvPorts-1:0][DmaMcastXbarCfg.NoMstPorts-1:0] DMACollectivConnectivity = '{default: '{SoCDMAOut: 1'b1, default: 1'b0}};
+
+    // Set default master port for all multicast's crossbar input's
+    localparam bit [DmaMcastXbarCfg.NoSlvPorts-1:0] DMAEnableDefaultMstPort = '1;
+
     axi_mcast_xbar #(
       .Cfg (DmaMcastXbarCfg),
+      .CollectivOpsConnectivity (DMACollectivConnectivity),
       .ATOPs (0),
       .slv_aw_chan_t (axi_mst_dma_aw_chan_t),
       .mst_aw_chan_t (axi_slv_dma_aw_chan_t),
@@ -748,9 +753,12 @@ module snitch_cluster
       .mst_ports_resp_i (wide_axi_slv_rsp),
       .addr_map_i (enabled_dma_xbar_rule),
       .en_default_mst_port_i (DMAEnableDefaultMstPort),
-      .default_mst_port_i ({DmaXbarCfg.NoSlvPorts{dma_xbar_default_port_rule}})
+      .default_mst_port_i ({DmaMcastXbarCfg.NoSlvPorts{dma_xbar_default_port_rule}})
     );
   end else begin : gen_dma_xbar
+    // Set default master port for all multicast's crossbar input's
+    localparam bit [DmaXbarCfg.NoSlvPorts-1:0] DMAEnableDefaultMstPort = '1;
+
     axi_xbar #(
       .Cfg (DmaXbarCfg),
       .ATOPs (0),
@@ -1689,5 +1697,7 @@ module snitch_cluster
   // For the DCA Extension the (Currently) only allowed configuration is 8 CC and 1 DC (9 Cores)
   `ASSERT_INIT(DCASystemConfiguration, (~Xdca) || (NrCores == 9))
   `ASSERT_INIT(DCASystemDMAWidth, (~Xdca) || (WideDataWidth == 512))
+  // Reroute collectiv operation on the wide link (only supported configuration)
+  `ASSERT_INIT(ReRouteCollectiv, !EnableDMAMulticast || ReRouteCollectivOp)
 
 endmodule
